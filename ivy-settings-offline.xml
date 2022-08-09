@@ -1,0 +1,11 @@
+<ivysettings>
+    <settings defaultResolver="default"/>
+    <include url="${ivy.default.settings.dir}/ivysettings-public.xml"/>
+    <include url="${ivy.default.settings.dir}/ivysettings-shared.xml"/>
+    <include url="${ivy.default.settings.dir}/ivysettings-local.xml"/>
+    <include url="${ivy.default.settings.dir}/ivysettings-main-chain.xml"/>
+    <include url="${ivy.default.settings.dir}/ivysettings-default-chain.xml"/>
+    
+    <property name="ivy.use.caches.only" value="false" />
+    <property name="ivy.cache.ttl.default" value="eternal" />``
+</ivysettings>
