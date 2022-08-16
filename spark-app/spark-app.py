@@ -1,3 +1,5 @@
+from msilib.schema import tables
+from tokenize import String
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import IntegerType, StringType, StructType, TimestampType
@@ -30,8 +32,14 @@ kafkaMessages = spark \
 
 # Define schema of tracking data
 trackingMessageSchema = StructType() \
-    .add("mission", StringType()) \
-    .add("timestamp", IntegerType())
+    .add("title", StringType()) \
+    .add("director", StringType()) \
+    .add("cast", StringType()) \
+    .add("country", StringType()) \
+    .add("release_year", IntegerType()) \
+    .add("duration", StringType()) \
+    .add("genre", StringType()) \
+    .add("description", StringType())
 
 # Example Part 3
 # Convert value: binary -> JSON -> fields + parsed timestamp
@@ -42,7 +50,7 @@ trackingMessages = kafkaMessages.select(
         trackingMessageSchema
     ).alias("json")
 ).select(
-    # Convert Unix timestamp to TimestampType
+    # # Convert Unix timestamp to TimestampType
     from_unixtime(column('json.timestamp'))
     .cast(TimestampType())
     .alias("parsed_timestamp"),
@@ -50,19 +58,52 @@ trackingMessages = kafkaMessages.select(
     # Select all JSON fields
     column("json.*")
 ) \
-    .withColumnRenamed('json.mission', 'mission') \
+    .withColumnRenamed('json.title', 'title') \
+    .withColumnRenamed('json.director', 'director') \
+    .withColumnRenamed('json.cast', 'cast') \
+    .withColumnRenamed('json.country', 'country') \
+    .withColumnRenamed('json.release_year', 'release_year') \
+    .withColumnRenamed('json.duration', 'duration') \
+    .withColumnRenamed('json.genre', 'genre') \
+    .withColumnRenamed('json.description', 'description') \
     .withWatermark("parsed_timestamp", windowDuration)
 
 # Example Part 4
-# Compute most popular slides
-popular = trackingMessages.groupBy(
+# Compute views of titles
+views_titles = trackingMessages.groupBy(
     window(
         column("parsed_timestamp"),
         windowDuration,
         slidingDuration
     ),
-    column("mission")
+    column("title")
 ).count().withColumnRenamed('count', 'views')
+
+views_director = trackingMessages.groupBy(
+    window(
+        column("parsed_timestamp"),
+        windowDuration,
+        slidingDuration
+    ),
+    column("director")
+).count().withColumnRenamed('count', 'views')
+
+
+# Rating for other titles with same director
+# same_director = trackingMessages.groupBy(
+#     window(
+#         column("parsed_timestamp"),
+#         windowDuration,
+#         slidingDuration
+#     ),
+#     column("title").where(column("director").like("%%"))
+# ).count().withColumnRenamed("count", "director_rating")
+# SELECT title, count(*)
+# FROM titles
+# WHERE director LIKE '%x%'
+# GROUP BY title
+
+
 
 # Example Part 5
 # Start running the query; print running counts to the console
