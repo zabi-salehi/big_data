@@ -1,13 +1,50 @@
-# Use Case: Popular NASA Shuttle Missions
+>This is a project for the lecture "Big Data" in third and fourth semester. Course: WWI20DSB  
+Contributors:       
+- Florian Frey
+- Anh Vu
+- Frederick Neugebauer
+- Olena Lavrikova
+- Zabiullah Salehi 
 
-```json
-{ 
-	mission: 'sts-10', 
-	timestamp: 1604325221 
-}
+# Use Case: Popular Netflix Movies and Shows
+
+
+- 
+- 
+- 
+
+
+# Architecture: 
+
+![Big Data Platform Architecture ](https://farberg.de/talks/big-data/img/big-data-app.svg)
+
+- Ideen: Das Bild beschreiben, warum wird spark und kafka verwendet, die verschiedenen Datein erklären worfür sie verantwortlich sind
+
+# Implementation
+
+## Data
+
+![Screenshot of the Data](data\Netflix_data.png)
+
+
+Describe data. Give the source. 
+
+## Content and coding
+
+## Final Application
+Show the cast (video demo) if possible, otherwise describe how the application should look like ideally. For example: per text and drawn picture ;)
+
+
+
 ```
 
-## Prerequisites
+	Titel: 
+	Director: 
+	timestamp: 1604325221 
+
+```
+
+# Prerequisites
 
 A running Strimzi.io Kafka operator
 
