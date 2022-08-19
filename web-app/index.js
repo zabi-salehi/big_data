@@ -278,7 +278,7 @@ async function getTitle(title) {
 }
 
 app.get("/library/:title", (req, res) => {
-	let title = req.params["title"]
+	let title = getTitle(req.params["title"])
 
 	// Send the tracking message to Kafka
 	sendTrackingMessage({

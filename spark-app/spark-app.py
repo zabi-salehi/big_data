@@ -39,7 +39,8 @@ trackingMessageSchema = StructType() \
     .add("release_year", IntegerType()) \
     .add("duration", StringType()) \
     .add("genre", StringType()) \
-    .add("description", StringType())
+    .add("description", StringType()) \
+    .add("timestamp", IntegerType())
 
 # Example Part 3
 # Convert value: binary -> JSON -> fields + parsed timestamp
@@ -69,6 +70,7 @@ trackingMessages = kafkaMessages.select(
     .withWatermark("parsed_timestamp", windowDuration)
 
 # Example Part 4
+
 # Compute views of titles
 views_titles = trackingMessages.groupBy(
     window(
@@ -78,30 +80,21 @@ views_titles = trackingMessages.groupBy(
     ),
     column("title")
 ).count().withColumnRenamed('count', 'views')
+views_titles.views *= 5 # a view is worth more than other scores
 
-views_director = trackingMessages.groupBy(
+
+trackingMessagesB = trackingMessages
+title_director_mapping = trackingMessages.join(
+    trackingMessagesB,
+    trackingMessages.director == trackingMessagesB.director
+).groupBy(
     window(
         column("parsed_timestamp"),
         windowDuration,
         slidingDuration
     ),
-    column("director")
+    trackingMessagesB.title
 ).count().withColumnRenamed('count', 'views')
-
-
-# Rating for other titles with same director
-# same_director = trackingMessages.groupBy(
-#     window(
-#         column("parsed_timestamp"),
-#         windowDuration,
-#         slidingDuration
-#     ),
-#     column("title").where(column("director").like("%%"))
-# ).count().withColumnRenamed("count", "director_rating")
-# SELECT title, count(*)
-# FROM titles
-# WHERE director LIKE '%x%'
-# GROUP BY title
 
 
 
