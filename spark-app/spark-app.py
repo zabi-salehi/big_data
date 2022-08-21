@@ -1,4 +1,4 @@
-from msilib.schema import tables
+# from msilib.schema import tables
 from tokenize import String
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
@@ -83,24 +83,28 @@ views_titles = trackingMessages.groupBy(
 views_titles.views *= 5 # a view is worth more than other scores
 
 
-trackingMessagesB = trackingMessages
-title_director_mapping = trackingMessages.join(
-    trackingMessagesB,
-    trackingMessages.director == trackingMessagesB.director
+# Compute views of titles for their directors
+tm1 = trackingMessages.alias("tm1")
+tm2 = trackingMessages.alias("tm2")
+
+title_director_mapping = tm1.join(
+    tm2,
+    tm1.director == tm2.director,
+    "inner"
 ).groupBy(
     window(
-        column("parsed_timestamp"),
+        column("tm1.parsed_timestamp"),
         windowDuration,
         slidingDuration
     ),
-    trackingMessagesB.title
+    column("tm2.title")
 ).count().withColumnRenamed('count', 'views')
 
 
 
 # Example Part 5
 # Start running the query; print running counts to the console
-consoleDump = popular \
+consoleDump = views_titles \
     .writeStream \
     .trigger(processingTime=slidingDuration) \
     .outputMode("update") \
@@ -108,8 +112,9 @@ consoleDump = popular \
     .option("truncate", "false") \
     .start()
 
-# Example Part 6
 
+
+# Example Part 6
 
 def saveToDatabase(batchDataframe, batchId):
     # Define function to save a dataframe to mysql
