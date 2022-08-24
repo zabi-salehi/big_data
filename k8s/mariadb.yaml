@@ -1,31 +1,30 @@
-#Begin: Configmap
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: mariadb-deployment-init-configmap
 data:
   mariadb-init.sql: |
-    CREATE TABLE netflix_titles (
-      title       VARCHAR NOT NULL,
-      director    VARCHAR,
-      cast        VARCHAR,
-      country     VARCHAR,
-      release_year INT,
-      duration    VARCHAR,
-      genre       VARCHAR,
-      description VARCHAR,
+    CREATE TABLE `netflix_titles` (
+      `show_id`     VARCHAR(5)    NOT NULL,
+      `title`       VARCHAR(150)  NOT NULL,
+      `director`    VARCHAR(50),
+      `cast`        VARCHAR(1000),
+      `country`     VARCHAR(100),
+      `release_year` INT,
+      `duration`    VARCHAR(20),
+      `genre`       VARCHAR(100),
+      `description` VARCHAR(300),
 
-      PRIMARY KEY (title)
+      PRIMARY KEY (`show_id`)
     );
 
-    CREATE TABLE rating (
-      title   VARCHAR NOT NULL,
-      rating  INT,
+    CREATE TABLE `rating` (
+      `show_id` VARCHAR(5)  NOT NULL,
+      `rating`  INT,
 
-      PRIMARY KEY (title)
+      PRIMARY KEY (`show_id`)
     );
 
-    !file ../data/ddl.txt
 
 ---
 apiVersion: apps/v1
@@ -52,7 +51,7 @@ spec:
             name: mariadb-deployment-init-configmap
       containers:
         - name: my-mariadb
-          image: mariadb
+          image: mariadb:10.7.4
           volumeMounts:
             - name: init-volume
               mountPath: /docker-entrypoint-initdb.d/
@@ -60,10 +59,10 @@ spec:
           env:
             - name: MARIADB_ROOT_PASSWORD
               value: "mysecretpw"
+            # - name: MARIADB_PASSWORD
+            #   value: "mysecretpw"
             - name: MARIADB_DATABASE
               value: "popular"
-          ports:
-            - containerPort: 3306
 
 ---
 #Begin: Service

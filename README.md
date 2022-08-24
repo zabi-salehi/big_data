@@ -87,7 +87,7 @@ To run the application on your local machine you need installations of [Docker D
 
 Start your Kubernetes Cluster with the Docker Engine by executing
 ```
-minikube start --driver=docker
+minikube start --driver=docker --memory 14336 --cpus 4
 ```
 
 Deploy a Strimzi.io Kafka operator
@@ -109,4 +109,12 @@ To deploy the remaining pods use
 skaffold run
 ```
 
-The application should now be rechable at http://localhost:3000.
+When the database is ready (check this via `kubectl logs \<mariadb-pod-name>`) populate it with data:
+```
+kubectl exec -i \<mariadb-pod-name> -- mariadb -uroot -pmysecretpw popular < data/mariadb-dump.sql
+```
+
+Run the following command and access the app via the url you'll receive:
+```
+minikube service popular-slides-service --url
+```

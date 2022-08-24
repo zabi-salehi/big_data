@@ -1,13 +1,14 @@
-# from msilib.schema import tables
-from tokenize import String
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import IntegerType, StringType, StructType, TimestampType
-import mysqlx
 
-dbOptions = {"host": "my-app-mariadb-service", 'port': 3306,
-             "user": "root", "password": "mysecretpw"}
-dbSchema = 'popular'
+import mysql.connector
+# from mysql.connector import errorcode
+
+# dbOptions = {"host": "my-app-mariadb-service", 'port': 33060,
+#              "user": "root", "password": "mysecretpw",
+#              "schema": "popular"}
+# dbSchema = 'popular'
 windowDuration = '5 minutes'
 slidingDuration = '1 minute'
 
@@ -32,6 +33,7 @@ kafkaMessages = spark \
 
 # Define schema of tracking data
 trackingMessageSchema = StructType() \
+    .add("show_id", StringType()) \
     .add("title", StringType()) \
     .add("director", StringType()) \
     .add("cast", StringType()) \
@@ -59,6 +61,7 @@ trackingMessages = kafkaMessages.select(
     # Select all JSON fields
     column("json.*")
 ) \
+    .withColumnRenamed('json.show_id', 'title') \
     .withColumnRenamed('json.title', 'title') \
     .withColumnRenamed('json.director', 'director') \
     .withColumnRenamed('json.cast', 'cast') \
@@ -78,7 +81,7 @@ views_titles = trackingMessages.groupBy(
         windowDuration,
         slidingDuration
     ),
-    column("title")
+    column("show_id")
 ).count().withColumnRenamed('count', 'views')
 views_titles.views *= 5 # a view is worth more than other scores
 
@@ -97,7 +100,7 @@ title_director_mapping = tm1.join(
         windowDuration,
         slidingDuration
     ),
-    column("tm2.title")
+    column("tm2.show_id")
 ).count().withColumnRenamed('count', 'views')
 
 
@@ -120,25 +123,30 @@ def saveToDatabase(batchDataframe, batchId):
     # Define function to save a dataframe to mysql
     def save_to_db(iterator):
         # Connect to database and use schema
-        session = mysqlx.get_session(dbOptions)
-        session.sql("USE popular").execute()
+        # session = mysqlx.get_session(dbOptions)
+        # session = mysqlx.get_session("mysqlx://root:mysecretpw@my-app-mariadb-service:33060/popular")
+
+
+        session = mysql.connector.connect(user='root', password='mysecretpw', host='my-app-mariadb-service', database='popular')
+        cursor = session.cursor()
 
         for row in iterator:
-            # Run upsert (insert or update existing)
-            sql = session.sql("INSERT INTO popular "
-                              "(mission, count) VALUES (?, ?) "
-                              "ON DUPLICATE KEY UPDATE count=?")
-            sql.bind(row.mission, row.views, row.views).execute()
+            cursor.execute(f"""INSERT INTO rating
+                            (show_id, rating) VALUES ({row.show_id}, {row.rating})
+                            ON DUPLICATE KEY UPDATE rating={row.rating}
+                            """)
+                            
 
+        session.commit()
+        cursor.close()
         session.close()
+
 
     # Perform batch UPSERTS per data partition
     batchDataframe.foreachPartition(save_to_db)
 
 # Example Part 7
-
-
-dbInsertStream = popular.writeStream \
+dbInsertStream = views_titles.writeStream \
     .trigger(processingTime=slidingDuration) \
     .outputMode("update") \
     .foreachBatch(saveToDatabase) \
