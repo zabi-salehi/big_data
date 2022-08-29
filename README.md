@@ -53,7 +53,7 @@ Because of a large amount of data, which should be coordinated and processed, Sp
 The repository contains the following directories:  
 
 **📂data**   
-➡ containing the dataset and a jupyter notebook to preprocess and convert the data into ddl statements, saving the results into `ddl.txt`  
+➡ containing the dataset and a jupyter notebook to preprocess and convert the data into ddl statements, saving the results into `mariadb-dump.sql` 
 
 **📂k8s**  
 ➡ .yaml-files used to define the deployment   
@@ -72,7 +72,8 @@ And the `📄skaffold.yaml` file to run the cluster (More on this in [Prerequisi
 
 ## Coding
 
-- erklären von index.js, spark-app.py und transform_data.ipynb
+- erklären von index.js, spark-app.py und transform_data.ipynb ?? wir erklären ja oben in "content" schon was die datein machen. 
+
 
 # Final Application Showcase
 
