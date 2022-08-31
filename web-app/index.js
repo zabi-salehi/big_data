@@ -5,6 +5,7 @@ const { Kafka } = require('kafkajs')
 const mariadb = require('mariadb')
 const MemcachePlus = require('memcache-plus')
 const express = require('express')
+const { exec } = require('child_process')
 
 const app = express()
 const cacheTimeSecs = 30
@@ -29,7 +30,7 @@ let options = optionparser
 	// Database options
 	.option('--mariadb-host <host>', 'MariaDB host', 'my-app-mariadb-service')
 	.option('--mariadb-port <port>', 'MariaDB port', 3306)
-	.option('--mariadb-schema <db>', 'MariaDB Schema/database', 'popular') // @?
+	.option('--mariadb-schema <db>', 'MariaDB Schema/database', 'netflix_titles')
 	.option('--mariadb-username <username>', 'MariaDB username', 'root')
 	.option('--mariadb-password <password>', 'MariaDB password', 'mysecretpw')
 	// Misc
@@ -57,6 +58,8 @@ async function executeQuery(query, data) {
 		console.log("Executing query ", query)
 		let res = await connection.query({ rowsAsArray: true, sql: query }, data)
 		return res
+	} catch {
+		console.log("Could not connect to database to execute query")
 	} finally {
 		if (connection)
 			connection.end()
@@ -134,11 +137,11 @@ async function sendTrackingMessage(data) {
 	let result = await producer.send({
 		topic: options.kafkaTopicTracking,
 		messages: [
-			{ value: JSON.stringify(data) }
+			{ value: JSON.stringify(data) } // @ how does the data look like?
 		]
 	})
 
-	console.log("Send result:", result)
+	console.log("Sent result to kafka:", result)
 	return result
 }
 // End
@@ -147,7 +150,7 @@ async function sendTrackingMessage(data) {
 // HTML helper to send a response to the client
 // -------------------------------------------------------
 
-function sendResponse(res, html, cachedResult) {
+function sendResponse(res, html, cachedResult) { // @ title fetch working? only number in url
 	res.send(`<!DOCTYPE html>
 		<html lang="en">
 		<head>
@@ -162,7 +165,7 @@ function sendResponse(res, html, cachedResult) {
 					for(var i = 0; i < maxRepetitions; ++i) {
 						const title = Math.floor(Math.random() * ${numberOfTitles})
 						console.log("Fetching title " + title)
-						fetch("/library/" + title, {cache: 'no-cache'})
+						fetch("/library/" + title, {cache: 'no-cache'}) // @
 					}
 				}
 			</script>
@@ -191,9 +194,9 @@ function sendResponse(res, html, cachedResult) {
 // Start page
 // -------------------------------------------------------
 
-// Get list of titles for library (from cache or db)
-async function getTitles() {
-	const key = 'show_id'
+// Get list of available titles for library (from cache or db)
+async function getLibrary() {
+	const key = 'library'
 	let cachedata = await getFromCache(key)
 
 	if (cachedata) {
@@ -201,39 +204,47 @@ async function getTitles() {
 		return { result: cachedata, cached: true }
 	} else {
 		console.log(`Cache miss for key=${key}, querying database`)
-		const data = await executeQuery("SELECT title FROM netflix_titles", [])
+		const data = await executeQuery("SELECT show_id, title FROM netflix_titles", [])
 		if (data) {
-			let result = data.map(row => row?.[0])
+			let result = data.map(row => ({show_id: row?.[0], title: row?.[1]})) // @
 			console.log("Got result=", result, "storing in cache")
 			if (memcached)
 				await memcached.set(key, result, cacheTimeSecs);
-			return { result, cached: false }
+			return { result: result, cached: false }
 		} else {
-			throw "No show data found"
+			throw "No shows found in cache or database"
 		}
 	}
 }
 
-// Get titles with best rating (from db only)
+// Get shows with best rating (from db only)
 async function getPopular(maxCount) {
-	const query = "SELECT show_id, rating FROM rating ORDER BY rating DESC LIMIT ?"
-	return (await executeQuery(query, [maxCount]))
-		.map(row => ({ show_id: row?.[0], rating: row?.[1] })) //@?
+	const data = await executeQuery("SELECT show_id, title, rating FROM rating ORDER BY rating DESC LIMIT ?", [maxCount])
+	if (data) {
+		let result = data.map(row => ({show_id: row?.[0],  title: row?.[1], rating: row?.[2]}))
+		console.log("Got popular shows: ", result)
+		return result
+	} else {
+		console.log("Could not get any popular shows")
+	}
+
+	// const query = "SELECT show_id, rating FROM rating ORDER BY rating DESC LIMIT ?"
+	// return (await executeQuery(query, [maxCount]))
+	// 	.map(row => ({ show_id: row?.[0], rating: row?.[1] })) //@?
 }
 
 // Return HTML for start page
 app.get("/", (req, res) => {
-	const topX = 15;
-	Promise.all([getTitles(), getPopular(topX)]).then(values => {
+	Promise.all([getLibrary(), getPopular(15)]).then(values => {
 		const library = values[0]
 		const popular = values[1]
 
 		const libraryHTML = library.result
-			.map(m => `<a href='library/${m}'>${m}</a>`)
+			.map(show => `<a href='library/${show[show_id]}'>${show[title]}</a>`) // @
 			.join(", ")
 
 		const popularHTML = popular
-			.map(pop => `<li> <a href='library/${pop.title}'>${pop.title}</a> (${pop.rating} rating) </li>`)
+			.map(pop => `<li> <a href='library/${pop.show_id}'>${pop.title}</a> (${pop.rating} rating) </li>`)
 			.join("\n")
 
 		const html = `
@@ -257,17 +268,20 @@ async function getTitle(show_id) {
 	const key = 'show_id_' + show_id //@?
 	let cachedata = await getFromCache(key)
 
+	console.log("Trying to fetch title with id ", show_id)
+
 	if (cachedata) {
 		console.log(`Cache hit for key=${key}, cachedata = ${cachedata}`)
 		return { ...cachedata, cached: true }
 	} else {
 		console.log(`Cache miss for key=${key}, querying database`)
 
-		let data = (await executeQuery(query, [show_id]))?.[0] // first entry
+		let data = (await executeQuery(query, [show_id]))?.[0] // first (and only) entry
 		if (data) {
 			let result = { show_id: data?.[0], title: data?.[1], director: data?.[2], cast: data?.[3], country: data?.[4], 
 				release_year: data?.[5], duration: data?.[6], genre: data?.[7], description: data?.[8] }
-			console.log(`Got result=${result}, storing in cache`)
+			console.log(`Got result=${result}, storing in cache...`)
+			// store result to cache
 			if (memcached)
 				await memcached.set(key, result, cacheTimeSecs);
 			return { ...result, cached: false }
@@ -278,17 +292,18 @@ async function getTitle(show_id) {
 }
 
 app.get("/library/:show_id", (req, res) => {
-	let show_id = getTitle(req.params["show_id"])
+	// Get data of show
+	let show_data = getTitle(req.params["show_id"])
 
 	// Send the tracking message to Kafka
 	sendTrackingMessage({
-		show_id,
+		show_data, // @ sent as single entries not dict, also "cached" included
 		timestamp: Math.floor(new Date() / 1000)
-	}).then(() => console.log(`Sent title=${show_id} to kafka topic=${options.kafkaTopicTracking}`))
+	}).then(() => console.log(`Sent title with id ${show_data.show_id} to kafka topic ${options.kafkaTopicTracking}`))
 		.catch(e => console.log("Error sending to kafka", e))
 
 	// Send reply to browser
-	getTitle(show_id).then(data => {
+	getTitle(show_data.show_id).then(data => {
 		sendResponse(res, `<h1>${data.title}(${data.release_year})</h1><p>${data.description}</p><b>${data.duration}</b> ` +
 		`<p>Director: ${data.director}</p><p>Actors: ${data.cast}</p><p>Country: ${data.country}</p><p>Tags: ${data.genre}</p> `,
 			// data.description.split("\n").map(p => `<p>${p}</p>`).join("\n"),

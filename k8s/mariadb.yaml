@@ -62,7 +62,7 @@ spec:
             # - name: MARIADB_PASSWORD
             #   value: "mysecretpw"
             - name: MARIADB_DATABASE
-              value: "popular"
+              value: "netflix_titles"
 
 ---
 #Begin: Service

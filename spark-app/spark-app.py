@@ -42,7 +42,7 @@ trackingMessageSchema = StructType() \
     .add("duration", StringType()) \
     .add("genre", StringType()) \
     .add("description", StringType()) \
-    .add("timestamp", IntegerType())
+    .add("timestamp", IntegerType()) # @ missing cached?
 
 # Example Part 3
 # Convert value: binary -> JSON -> fields + parsed timestamp
@@ -127,7 +127,7 @@ def saveToDatabase(batchDataframe, batchId):
         # session = mysqlx.get_session("mysqlx://root:mysecretpw@my-app-mariadb-service:33060/popular")
 
 
-        session = mysql.connector.connect(user='root', password='mysecretpw', host='my-app-mariadb-service', database='popular')
+        session = mysql.connector.connect(user='root', password='mysecretpw', host='my-app-mariadb-service', database='netflix_titles')
         cursor = session.cursor()
 
         for row in iterator:
