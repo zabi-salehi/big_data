@@ -59,8 +59,6 @@ spec:
           env:
             - name: MARIADB_ROOT_PASSWORD
               value: "mysecretpw"
-            # - name: MARIADB_PASSWORD
-            #   value: "mysecretpw"
             - name: MARIADB_DATABASE
               value: "netflix_titles"
 

@@ -137,11 +137,11 @@ async function sendTrackingMessage(data) {
 	let result = await producer.send({
 		topic: options.kafkaTopicTracking,
 		messages: [
-			{ value: JSON.stringify(data) } // @ how does the data look like?
+			{ value: JSON.stringify(data) }
 		]
 	})
 
-	console.log("Sent result to kafka:", result)
+	console.log("Sent result to kafka")
 	return result
 }
 // End
@@ -150,23 +150,7 @@ async function sendTrackingMessage(data) {
 // HTML helper to send a response to the client
 // -------------------------------------------------------
 
-/* <script>
-				function fetchRandomTitles() {
-					const maxRepetitions = Math.floor(Math.random() * 250)
-					document.getElementById("out").innerText = "Fetching " + maxRepetitions + " random titles, see console output"
-					for(var i = 0; i < maxRepetitions; ++i) {
-						const title = Math.floor(Math.random() * ${numberOfTitles})
-						console.log("Fetching title " + title)
-						fetch("/library/" + title, {cache: 'no-cache'}) // @
-					}
-				}
-			</script>
-<p>
-<a href="javascript: fetchRandomTitles();">Randomly simulate some views</a>
-<span id="out"></span>
-</p> */
-
-function sendResponse(res, html, cachedResult) { // @ title fetch working? only number in url
+function sendResponse(res, html, cachedResult) {
 	res.send(`<!DOCTYPE html>
 		<html lang="en">
 		<head>
@@ -174,17 +158,34 @@ function sendResponse(res, html, cachedResult) { // @ title fetch working? only 
 			<meta name="viewport" content="width=device-width, initial-scale=1.0">
 			<title>Big Data Netflix Ratings</title>
 			<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/mini.css/3.0.1/mini-default.min.css">
+			<script>
+				function fetchRandomTitles() {
+					const Repetitions = 100
+					document.getElementById("out").innerText = "Fetching " + Repetitions + " random titles, see console output"
+					for(var i = 0; i < Repetitions; ++i) {
+						const show_id = "s" + Math.floor(Math.random() * ${numberOfTitles})
+						console.log("Fetching title " + show_id)
+						fetch("/library/" + show_id, {cache: 'no-cache'})
+					}
+				}
+			</script>
 		</head>
 		<body>
-			<h2>Information about the generated page</h2>
+			<h1>Welcome to Netflix</h1>
 			<hr>
+			<h2>Information about the generated page</h2>
 			<ul>
 				<li>Server: ${os.hostname()}</li>
 				<li>Date: ${new Date()}</li>
 				<li>Using ${memcachedServers.length} memcached Servers: ${memcachedServers}</li>
 				<li>Cached result: ${cachedResult}</li>
 			</ul>
-			<h1>Welcome to Netflix</h1>
+			<hr>
+			<p>
+			<a href="javascript: fetchRandomTitles();">Randomly simulate some views</a>
+			<span id="out"></span>
+			</p>
+			<hr>
 			${html}
 		</body>
 	</html>
@@ -201,14 +202,14 @@ async function getLibrary() {
 	let cachedata = await getFromCache(key)
 
 	if (cachedata) {
-		console.log(`Cache hit for key=${key}, cachedata = `, cachedata)
+		console.log(`Cache hit for key=${key}`)
 		return { result: cachedata, cached: true }
 	} else {
 		console.log(`Cache miss for key=${key}, querying database`)
+		// get show_id and title of all entries
 		const data = await executeQuery("SELECT show_id, title FROM netflix_titles", [])
 		if (data) {
 			let result = data.map(row => ({show_id: row?.[0], title: row?.[1]}))
-			console.log("Got result=", result, "storing in cache")
 			if (memcached)
 				await memcached.set(key, result, cacheTimeSecs);
 			return { result: result, cached: false }
@@ -220,10 +221,11 @@ async function getLibrary() {
 
 // Get shows with best rating (from db only)
 async function getPopular() {
+	// join with netflix_titles to receive and display title of show instead of id
 	const data = await executeQuery("SELECT r.show_id, n.title, r.rating FROM rating r JOIN netflix_titles n ON r.show_id = n.show_id ORDER BY r.rating DESC LIMIT 15", [])
 	if (data) {
 		let result = data.map(row => ({show_id: row?.[0], title: row?.[1], rating: row?.[2]}))
-		console.log("Got popular shows: ", result)
+		console.log("Got popular shows:", result)
 		return result
 	} else {
 		console.log("Could not get any popular shows")
@@ -242,14 +244,13 @@ app.get("/", (req, res) => {
 		if(library) {
 			libraryHTML = library.result.map(show => `<a href='library/${show.show_id}'>${show.title}</a>`).join(", ")
 		} else {
-			console.log("No library information found for html")
+			libraryHTML = " "
 		}
 
 		if(popular) {
 			popularHTML = popular.map(pop => `<li> <a href='library/${pop.show_id}'>${pop.title}</a> (rating: ${pop.rating}) </li>`).join("\n")
 		} else {
-			console.log("No popular show information found for html")
-			popularHTML = ""
+			popularHTML = " "
 		}
 
 		const html = `
@@ -272,12 +273,12 @@ async function getTitle(show_id) {
 	const query = "SELECT * FROM netflix_titles WHERE show_id = '" + show_id + "'"
 	const key = 'show_id_' + show_id
 
-	console.log("Trying to fetch title with id ", show_id)
+	console.log("Trying to fetch title", show_id)
 
 	let cachedata = await getFromCache(key)
 
 	if (cachedata) {
-		console.log(`Cache hit for key=${key}, cachedata = ${cachedata}`)
+		console.log(`Cache hit for key=${key}`)
 		return { ...cachedata, cached: true }
 	} else {
 		console.log(`Cache miss for key=${key}, querying database`)
@@ -305,25 +306,18 @@ async function getTitle(show_id) {
 	}
 }
 
+// Define single page view of a specific show
 app.get("/library/:show_id", (req, res) => {
 	const show_id = req.params["show_id"]
 
-	// Send tracking message to Kafka
+	// Send tracking message to Kafka (click on show = view)
 	getTitle(show_id).then(data => {
 		sendTrackingMessage({
 			show_id: data.show_id,
-			title: data.title,
 			director: data.director,
-			cast: data.cast,
-			country: data.country,
-			release_year: data.release_year,
-			duration: data.duration,
-			genre: data.genre,
-			description: data.description,
 			timestamp: Math.floor(new Date() / 1000)
 		});
 		console.log(`Sent title ${show_id} to kafka topic ${options.kafkaTopicTracking}.`);
-		console.log(`Including data like title ${data.title} and director ${data.director}`)
 	}).catch(e =>
 		console.log("Error sending to kafka", e)
 	)
@@ -343,6 +337,7 @@ app.get("/library/:show_id", (req, res) => {
 		sendResponse(res, `<h1>Error</h1><p>${err}</p><a href="../../"><input type="button" value="Back" /></a>`, false)
 	})
 });
+
 
 // -------------------------------------------------------
 // Main method

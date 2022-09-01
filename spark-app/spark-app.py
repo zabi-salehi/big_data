@@ -1,19 +1,13 @@
-from typing import ValuesView
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import *
+from pyspark.sql import functions as F 
 from pyspark.sql.types import IntegerType, StringType, StructType, TimestampType
 
 import mysql.connector
-# from mysql.connector import errorcode
 
-# dbOptions = {"host": "my-app-mariadb-service", 'port': 33060,
-#              "user": "root", "password": "mysecretpw",
-#              "schema": "popular"}
-# dbSchema = 'popular'
-windowDuration = '5 minutes'
-slidingDuration = '1 minute'
+windowDuration = '10 minutes'
+slidingDuration = '30 seconds'
 
-# Example Part 1
+
 # Create a spark session
 spark = SparkSession.builder \
     .appName("Structured Streaming").getOrCreate()
@@ -21,8 +15,7 @@ spark = SparkSession.builder \
 # Set log level
 spark.sparkContext.setLogLevel('WARN')
 
-# Example Part 2
-# Read messages from Kafka
+# Read messages from Kafka with topic "tracking-data"
 kafkaMessages = spark \
     .readStream \
     .format("kafka") \
@@ -35,83 +28,85 @@ kafkaMessages = spark \
 # Define schema of tracking data
 trackingMessageSchema = StructType() \
     .add("show_id", StringType()) \
-    .add("title", StringType()) \
     .add("director", StringType()) \
-    .add("cast", StringType()) \
-    .add("country", StringType()) \
-    .add("release_year", IntegerType()) \
-    .add("duration", StringType()) \
-    .add("genre", StringType()) \
-    .add("description", StringType()) \
-    .add("timestamp", IntegerType()) # @ missing cached?
+    .add("timestamp", IntegerType())
 
-# Example Part 3
+
 # Convert value: binary -> JSON -> fields + parsed timestamp
 trackingMessages = kafkaMessages.select(
-    # Extract 'value' from Kafka message (i.e., the tracking data)
-    from_json(
-        column("value").cast("string"),
+    # Extract 'value' from Kafka message (the tracking data)
+    F.from_json(
+        F.column("value").cast("string"),
         trackingMessageSchema
     ).alias("json")
 ).select(
-    # # Convert Unix timestamp to TimestampType
-    from_unixtime(column('json.timestamp'))
+    # Convert Unix timestamp to TimestampType
+    F.from_unixtime(F.column('json.timestamp'))
     .cast(TimestampType())
     .alias("parsed_timestamp"),
 
     # Select all JSON fields
-    column("json.*")
-) \
-    .withColumnRenamed('json.show_id', 'title') \
-    .withColumnRenamed('json.title', 'title') \
+    F.column("json.*")
+).withColumnRenamed('json.show_id', 'show_id') \
     .withColumnRenamed('json.director', 'director') \
-    .withColumnRenamed('json.cast', 'cast') \
-    .withColumnRenamed('json.country', 'country') \
-    .withColumnRenamed('json.release_year', 'release_year') \
-    .withColumnRenamed('json.duration', 'duration') \
-    .withColumnRenamed('json.genre', 'genre') \
-    .withColumnRenamed('json.description', 'description') \
     .withWatermark("parsed_timestamp", windowDuration)
 
-# Example Part 4
 
-# Compute views of titles
-views_titles = trackingMessages.groupBy(
-    window(
-        column("parsed_timestamp"),
+# Calculate Rating
+
+# Aggregate views of shows over time windows
+views = trackingMessages.groupBy(
+    F.window(
+        F.col("parsed_timestamp"),
         windowDuration,
         slidingDuration
     ),
-    column("show_id")
-).count().withColumnRenamed('count', 'views')
-# views_titles.views *= 5 # a view is worth more than other scores
+    F.col("show_id"),
+    F.col("director")
+).count().withColumnRenamed("count", "rating")
+
+# Create two aliases for join operation
+tm1 = views.withColumnRenamed("rating", "title_views").alias("tm1")
+tm2 = views.withColumnRenamed("rating", "director_views").alias("tm2")
+
+# Apply logic to calculate rating of shows
+# For each view of a show A, the show gets 5 rating points
+# The view of another show B by the same director as show A adds 1 rating point for the first show A and vice versa
+
+# Example: 1 view for show A and 1 view for show B, both have the same director
+# Rating of each show A and B = 5 + 1 = 6
+
+# Using left outer join, so shows without a matching director of show B still get the rating for their views
+final_rating = views
+# final_rating = tm1.join(
+#         tm2,
+#         [
+#             F.col("tm1.director") == F.col("tm2.director"), # outer join of shows with same directors
+#             F.col("tm1.show_id") != F.col("tm2.show_id"),   # but not exactly the same show
+#             F.col("tm1.window") == F.col("tm2.window")      # in same time window
+#         ],
+#         "left_outer"
+# ).select(
+#     F.col("tm1.director"),
+#     F.col("tm2.director"),
+#     F.col("tm1.show_id"),
+#     F.col("tm1.window"),
+#     F.col("tm1.title_views"),
+#     F.col("tm2.director_views")
+# ) \
+#     .withColumn("director_rating", F.when(F.col("tm2.director").isNotNull(), F.col("tm2.director_views") * 1).otherwise(F.lit(0))) \
+#     .withColumn("view_rating", F.col("tm1.title_views") * 5) \
+#     .withColumn("final_rating", F.col("director_rating") + F.col("view_rating")) \
+#     .groupBy(
+#         F.col("tm1.window"),
+#         F.col("tm1.show_id"),
+#         F.col("final_rating")
+#     ).sum().withColumnRenamed("final_rating", "rating")
 
 
-# Compute views of titles for their directors
-tm1 = trackingMessages.alias("tm1")
-tm2 = trackingMessages.alias("tm2")
 
-title_director_mapping = tm1.join(
-    tm2,
-    tm1.director == tm2.director,
-    "inner"
-).groupBy(
-    window(
-        column("tm1.parsed_timestamp"),
-        windowDuration,
-        slidingDuration
-    ),
-    column("tm2.show_id")
-).count().withColumnRenamed('count', 'views')
-
-
-# Join final rating
-# final_rating = views_titles
-
-
-# Example Part 5
-# Start running the query; print running counts to the console
-consoleDump = views_titles \
+# Print current rating to the console
+consoleDump = final_rating \
     .writeStream \
     .trigger(processingTime=slidingDuration) \
     .outputMode("update") \
@@ -120,35 +115,25 @@ consoleDump = views_titles \
     .start()
 
 
-
-# Example Part 6
-
+# Save calculated rating to database for web application to access
 def saveToDatabase(batchDataframe, batchId):
-    # Define function to save a dataframe to mysql
     def save_to_db(iterator):
-        # Connect to database and use schema
-        # session = mysqlx.get_session(dbOptions)
-        # session = mysqlx.get_session("mysqlx://root:mysecretpw@my-app-mariadb-service:33060/popular")
-
-
         session = mysql.connector.connect(user='root', password='mysecretpw', host='my-app-mariadb-service', database='netflix_titles')
         cursor = session.cursor()
 
         for row in iterator:
-            query = f"INSERT INTO rating (show_id, rating) VALUES ('{row.show_id}', {row.views}) ON DUPLICATE KEY UPDATE rating={row.views};"
+            query = f"INSERT INTO rating (show_id, rating) VALUES ('{row.show_id}', {row.rating}) ON DUPLICATE KEY UPDATE rating={row.rating};"
             cursor.execute(query)
                             
-
         session.commit()
         cursor.close()
         session.close()
 
-
     # Perform batch UPSERTS per data partition
     batchDataframe.foreachPartition(save_to_db)
 
-# Example Part 7
-dbInsertStream = views_titles.writeStream \
+
+dbInsertStream = final_rating.writeStream \
     .trigger(processingTime=slidingDuration) \
     .outputMode("update") \
     .foreachBatch(saveToDatabase) \
