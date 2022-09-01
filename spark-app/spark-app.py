@@ -1,3 +1,4 @@
+from typing import ValuesView
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import IntegerType, StringType, StructType, TimestampType
@@ -83,7 +84,7 @@ views_titles = trackingMessages.groupBy(
     ),
     column("show_id")
 ).count().withColumnRenamed('count', 'views')
-views_titles.views *= 5 # a view is worth more than other scores
+# views_titles.views *= 5 # a view is worth more than other scores
 
 
 # Compute views of titles for their directors
@@ -103,6 +104,9 @@ title_director_mapping = tm1.join(
     column("tm2.show_id")
 ).count().withColumnRenamed('count', 'views')
 
+
+# Join final rating
+# final_rating = views_titles
 
 
 # Example Part 5
@@ -131,10 +135,8 @@ def saveToDatabase(batchDataframe, batchId):
         cursor = session.cursor()
 
         for row in iterator:
-            cursor.execute(f"""INSERT INTO rating
-                            (show_id, rating) VALUES ({row.show_id}, {row.rating})
-                            ON DUPLICATE KEY UPDATE rating={row.rating}
-                            """)
+            query = f"INSERT INTO rating (show_id, rating) VALUES ('{row.show_id}', {row.views}) ON DUPLICATE KEY UPDATE rating={row.views};"
+            cursor.execute(query)
                             
 
         session.commit()

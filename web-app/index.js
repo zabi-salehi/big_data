@@ -59,7 +59,7 @@ async function executeQuery(query, data) {
 		let res = await connection.query({ rowsAsArray: true, sql: query }, data)
 		return res
 	} catch {
-		console.log("Could not connect to database to execute query")
+		console.log(`Could not connect to database to execute query / got no result`)
 	} finally {
 		if (connection)
 			connection.end()
@@ -150,15 +150,7 @@ async function sendTrackingMessage(data) {
 // HTML helper to send a response to the client
 // -------------------------------------------------------
 
-function sendResponse(res, html, cachedResult) { // @ title fetch working? only number in url
-	res.send(`<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<meta name="viewport" content="width=device-width, initial-scale=1.0">
-			<title>Big Data Netflix Ratings</title>
-			<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/mini.css/3.0.1/mini-default.min.css">
-			<script>
+/* <script>
 				function fetchRandomTitles() {
 					const maxRepetitions = Math.floor(Math.random() * 250)
 					document.getElementById("out").innerText = "Fetching " + maxRepetitions + " random titles, see console output"
@@ -169,22 +161,31 @@ function sendResponse(res, html, cachedResult) { // @ title fetch working? only 
 					}
 				}
 			</script>
+<p>
+<a href="javascript: fetchRandomTitles();">Randomly simulate some views</a>
+<span id="out"></span>
+</p> */
+
+function sendResponse(res, html, cachedResult) { // @ title fetch working? only number in url
+	res.send(`<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<title>Big Data Netflix Ratings</title>
+			<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/mini.css/3.0.1/mini-default.min.css">
 		</head>
 		<body>
-			<h1>Welcome to Netflix</h1>
-			<p>
-				<a href="javascript: fetchRandomTitles();">Randomly simulate some views</a>
-				<span id="out"></span>
-			</p>
-			${html}
+			<h2>Information about the generated page</h2>
 			<hr>
-			<h2>Information about the generated page</h4>
 			<ul>
 				<li>Server: ${os.hostname()}</li>
 				<li>Date: ${new Date()}</li>
 				<li>Using ${memcachedServers.length} memcached Servers: ${memcachedServers}</li>
 				<li>Cached result: ${cachedResult}</li>
 			</ul>
+			<h1>Welcome to Netflix</h1>
+			${html}
 		</body>
 	</html>
 	`)
@@ -206,7 +207,7 @@ async function getLibrary() {
 		console.log(`Cache miss for key=${key}, querying database`)
 		const data = await executeQuery("SELECT show_id, title FROM netflix_titles", [])
 		if (data) {
-			let result = data.map(row => ({show_id: row?.[0], title: row?.[1]})) // @
+			let result = data.map(row => ({show_id: row?.[0], title: row?.[1]}))
 			console.log("Got result=", result, "storing in cache")
 			if (memcached)
 				await memcached.set(key, result, cacheTimeSecs);
@@ -218,34 +219,38 @@ async function getLibrary() {
 }
 
 // Get shows with best rating (from db only)
-async function getPopular(maxCount) {
-	const data = await executeQuery("SELECT show_id, title, rating FROM rating ORDER BY rating DESC LIMIT ?", [maxCount])
+async function getPopular() {
+	const data = await executeQuery("SELECT r.show_id, n.title, r.rating FROM rating r JOIN netflix_titles n ON r.show_id = n.show_id ORDER BY r.rating DESC LIMIT 15", [])
 	if (data) {
-		let result = data.map(row => ({show_id: row?.[0],  title: row?.[1], rating: row?.[2]}))
+		let result = data.map(row => ({show_id: row?.[0], title: row?.[1], rating: row?.[2]}))
 		console.log("Got popular shows: ", result)
 		return result
 	} else {
 		console.log("Could not get any popular shows")
 	}
-
-	// const query = "SELECT show_id, rating FROM rating ORDER BY rating DESC LIMIT ?"
-	// return (await executeQuery(query, [maxCount]))
-	// 	.map(row => ({ show_id: row?.[0], rating: row?.[1] })) //@?
 }
 
 // Return HTML for start page
 app.get("/", (req, res) => {
-	Promise.all([getLibrary(), getPopular(15)]).then(values => {
+	Promise.all([getLibrary(), getPopular()]).then(values => {
 		const library = values[0]
 		const popular = values[1]
 
-		const libraryHTML = library.result
-			.map(show => `<a href='library/${show[show_id]}'>${show[title]}</a>`) // @
-			.join(", ")
+		let popularHTML;
+		let libraryHTML;
 
-		const popularHTML = popular
-			.map(pop => `<li> <a href='library/${pop.show_id}'>${pop.title}</a> (${pop.rating} rating) </li>`)
-			.join("\n")
+		if(library) {
+			libraryHTML = library.result.map(show => `<a href='library/${show.show_id}'>${show.title}</a>`).join(", ")
+		} else {
+			console.log("No library information found for html")
+		}
+
+		if(popular) {
+			popularHTML = popular.map(pop => `<li> <a href='library/${pop.show_id}'>${pop.title}</a> (rating: ${pop.rating}) </li>`).join("\n")
+		} else {
+			console.log("No popular show information found for html")
+			popularHTML = ""
+		}
 
 		const html = `
 			<h1>Popular Shows and Movies:</h1>
@@ -264,11 +269,12 @@ app.get("/", (req, res) => {
 // -------------------------------------------------------
 
 async function getTitle(show_id) {
-	const query = "SELECT * FROM netflix_titles WHERE show_id = ?"
-	const key = 'show_id_' + show_id //@?
-	let cachedata = await getFromCache(key)
+	const query = "SELECT * FROM netflix_titles WHERE show_id = '" + show_id + "'"
+	const key = 'show_id_' + show_id
 
 	console.log("Trying to fetch title with id ", show_id)
+
+	let cachedata = await getFromCache(key)
 
 	if (cachedata) {
 		console.log(`Cache hit for key=${key}, cachedata = ${cachedata}`)
@@ -276,12 +282,20 @@ async function getTitle(show_id) {
 	} else {
 		console.log(`Cache miss for key=${key}, querying database`)
 
-		let data = (await executeQuery(query, [show_id]))?.[0] // first (and only) entry
+		let data = (await executeQuery(query, []))?.[0]
 		if (data) {
-			let result = { show_id: data?.[0], title: data?.[1], director: data?.[2], cast: data?.[3], country: data?.[4], 
-				release_year: data?.[5], duration: data?.[6], genre: data?.[7], description: data?.[8] }
-			console.log(`Got result=${result}, storing in cache...`)
+			let result = {
+				show_id: data?.[0],
+				title: data?.[1],
+				director: data?.[2],
+				cast: data?.[3],
+				country: data?.[4], 
+				release_year: data?.[5],
+				duration: data?.[6],
+				genre: data?.[7],
+				description: data?.[8] }
 			// store result to cache
+			console.log(`Got result from database, storing in cache...`)
 			if (memcached)
 				await memcached.set(key, result, cacheTimeSecs);
 			return { ...result, cached: false }
@@ -292,25 +306,41 @@ async function getTitle(show_id) {
 }
 
 app.get("/library/:show_id", (req, res) => {
-	// Get data of show
-	let show_data = getTitle(req.params["show_id"])
+	const show_id = req.params["show_id"]
 
-	// Send the tracking message to Kafka
-	sendTrackingMessage({
-		show_data, // @ sent as single entries not dict, also "cached" included
-		timestamp: Math.floor(new Date() / 1000)
-	}).then(() => console.log(`Sent title with id ${show_data.show_id} to kafka topic ${options.kafkaTopicTracking}`))
-		.catch(e => console.log("Error sending to kafka", e))
+	// Send tracking message to Kafka
+	getTitle(show_id).then(data => {
+		sendTrackingMessage({
+			show_id: data.show_id,
+			title: data.title,
+			director: data.director,
+			cast: data.cast,
+			country: data.country,
+			release_year: data.release_year,
+			duration: data.duration,
+			genre: data.genre,
+			description: data.description,
+			timestamp: Math.floor(new Date() / 1000)
+		});
+		console.log(`Sent title ${show_id} to kafka topic ${options.kafkaTopicTracking}.`);
+		console.log(`Including data like title ${data.title} and director ${data.director}`)
+	}).catch(e =>
+		console.log("Error sending to kafka", e)
+	)
 
 	// Send reply to browser
-	getTitle(show_data.show_id).then(data => {
-		sendResponse(res, `<h1>${data.title}(${data.release_year})</h1><p>${data.description}</p><b>${data.duration}</b> ` +
-		`<p>Director: ${data.director}</p><p>Actors: ${data.cast}</p><p>Country: ${data.country}</p><p>Tags: ${data.genre}</p> `,
-			// data.description.split("\n").map(p => `<p>${p}</p>`).join("\n"),
-			data.cached
+	getTitle(show_id).then(data => {
+		sendResponse(res, 
+		`<nobr><h1>${data.title} (${data.release_year})</h1><p>${data.duration}</p></nobr>
+		<p>${data.description}</p>
+		<p>Director: ${data.director}</p>
+		<p>Actors: ${data.cast}</p>
+		<p>Country: ${data.country}</p>
+		<p>Tags: ${data.genre}</p>
+		<a href="../../"><input type="button" value="Back" /></a>`,
 		)
 	}).catch(err => {
-		sendResponse(res, `<h1>Error</h1><p>${err}</p>`, false)
+		sendResponse(res, `<h1>Error</h1><p>${err}</p><a href="../../"><input type="button" value="Back" /></a>`, false)
 	})
 });
 

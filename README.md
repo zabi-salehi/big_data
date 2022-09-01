@@ -112,7 +112,7 @@ skaffold run
 
 When the database is ready (check this via `kubectl logs \<mariadb-pod-name>`) populate it with data:
 ```
-kubectl exec -i \<mariadb-pod-name> -- mariadb -uroot -pmysecretpw popular < data/mariadb-dump.sql
+kubectl exec -i \<mariadb-pod-name> -- mariadb -uroot -pmysecretpw netflix_titles < data/mariadb-dump.sql
 ```
 
 Run the following command and access the app via the url you'll receive:
