@@ -37,7 +37,7 @@ As seen in the following sample:
 
 Here you can see a demo of the application:
 
-- insert video here
+https://user-images.githubusercontent.com/83298480/188093215-3db667ed-6999-4508-a690-8c399c5cef45.mp4
 
 # Architecture
 
