@@ -77,32 +77,39 @@ tm2 = views.withColumnRenamed("rating", "director_views").alias("tm2")
 # Rating of each show A and B = 5 + 1 = 6
 
 # Using left outer join, so shows without a matching director of show B still get the rating for their views
-final_rating = views
-# final_rating = tm1.join(
-#         tm2,
-#         [
-#             F.col("tm1.director") == F.col("tm2.director"), # outer join of shows with same directors
-#             F.col("tm1.show_id") != F.col("tm2.show_id"),   # but not exactly the same show
-#             F.col("tm1.window") == F.col("tm2.window")      # in same time window
-#         ],
-#         "left_outer"
-# ).select(
-#     F.col("tm1.director"),
-#     F.col("tm2.director"),
-#     F.col("tm1.show_id"),
-#     F.col("tm1.window"),
-#     F.col("tm1.title_views"),
-#     F.col("tm2.director_views")
-# ) \
-#     .withColumn("director_rating", F.when(F.col("tm2.director").isNotNull(), F.col("tm2.director_views") * 1).otherwise(F.lit(0))) \
-#     .withColumn("view_rating", F.col("tm1.title_views") * 5) \
-#     .withColumn("final_rating", F.col("director_rating") + F.col("view_rating")) \
-#     .groupBy(
-#         F.col("tm1.window"),
-#         F.col("tm1.show_id"),
-#         F.col("final_rating")
-#     ).sum().withColumnRenamed("final_rating", "rating")
 
+final_rating = views
+
+# The following piece of code wil cause the application to not work
+# It is supposed to calculate the score for shows with the same director as described in the documentation
+# For a functional version of the application the rating consists only of the views
+
+"""
+final_rating = tm1.join(
+        tm2,
+        [
+            F.col("tm1.director") == F.col("tm2.director"), # outer join of shows with same directors
+            F.col("tm1.show_id") != F.col("tm2.show_id"),   # but not exactly the same show
+            F.col("tm1.window") == F.col("tm2.window")      # in same time window
+        ],
+        "left_outer"
+).select(
+    F.col("tm1.director"),
+    F.col("tm2.director"),
+    F.col("tm1.show_id"),
+    F.col("tm1.window"),
+    F.col("tm1.title_views"),
+    F.col("tm2.director_views")
+) \
+    .withColumn("director_rating", F.when(F.col("tm2.director").isNotNull(), F.col("tm2.director_views") * 1).otherwise(F.lit(0))) \
+    .withColumn("view_rating", F.col("tm1.title_views") * 5) \
+    .withColumn("final_rating", F.col("director_rating") + F.col("view_rating")) \
+    .groupBy(
+        F.col("tm1.window"),
+        F.col("tm1.show_id"),
+        F.col("final_rating")
+    ).sum().withColumnRenamed("final_rating", "rating")
+"""
 
 
 # Print current rating to the console

@@ -7,6 +7,16 @@ Contributors (matr. number):
 - Olena Lavrikova (5436924)
 - Zabiullah Salehi (7891497)
 
+## Table of contents
+- [Idea: Popular Netflix Movies and Shows](#idea-popular-netflix-movies-and-shows)
+- [Data](#data)
+- [Screencast](#screencast)
+- [Architecture](#architecture)
+- [Implementation](#implementation)
+  - [Repository Content](#repository-content)
+  - [Used technologies](#used-technologies)
+  - [Course of the project](#course-of-the-project)
+- [Guide to run the application](#guide-to-run-the-application)
 
 
 # Idea: Popular Netflix Movies and Shows
